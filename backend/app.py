@@ -15,8 +15,10 @@ from models.model_train import train_user_model, load_user_model, predict
 import mediapipe as mp
 from fastapi.middleware.cors import CORSMiddleware
 import threading
+from dotenv import load_dotenv
 
 # ------------------- Config -------------------
+load_dotenv()
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")
 SECRET_KEY = os.getenv("SECRET_KEY", "CHANGE_THIS_SECRET")
 ALGORITHM = "HS256"
