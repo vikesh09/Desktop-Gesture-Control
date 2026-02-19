@@ -37,6 +37,7 @@ gesture_action.create_index([("user_id", 1)])
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 app = FastAPI()
 security = HTTPBearer()
+model_cache = {}
 
 mp_hands = mp.solutions.hands
 
@@ -227,6 +228,7 @@ def save_frame(data: Frame, user_id: str = Depends(get_user)):
 
 @app.post("/retrain_model")
 def retrain_model(user_id: str = Depends(get_user)):
+
     count = gestures.count_documents({"user_id": user_id})
 
     if count < 20:
@@ -240,7 +242,10 @@ def retrain_model(user_id: str = Depends(get_user)):
         user_id=user_id
     )
 
+    model_cache.pop(user_id, None)
+
     return {"message": "Model trained", "classes": classes}
+
 
 
 @app.post("/delete_gesture")
@@ -274,6 +279,7 @@ async def websocket_predict(websocket: WebSocket):
     await websocket.accept()
 
     try:
+        # --- Receive token first ---
         auth_data = await websocket.receive_json()
         token = auth_data.get("token")
 
@@ -288,18 +294,27 @@ async def websocket_predict(websocket: WebSocket):
             await websocket.close(code=1008)
             return
 
-        model, classes = load_user_model(
-            mongo_uri=MONGO_URI,
-            db_name="gesture_app",
-            model_collection_name="user_models",
-            user_id=user_id
-        )
+        # ----------------- MODEL CACHING -----------------
+        if user_id not in model_cache:
+            model, classes = load_user_model(
+                mongo_uri=MONGO_URI,
+                db_name="gesture_app",
+                model_collection_name="user_models",
+                user_id=user_id
+            )
 
-        if not model:
-            await websocket.send_json({"error": "Model not trained"})
-            await websocket.close()
-            return
+            if not model:
+                await websocket.send_json({"error": "Model not trained"})
+                await websocket.close()
+                return
 
+            # Store in memory
+            model_cache[user_id] = (model, classes)
+
+        model, classes = model_cache[user_id]
+        # --------------------------------------------------
+
+        # --- Prediction Loop ---
         while True:
             data = await websocket.receive_json()
             frame_base64 = data.get("frame")

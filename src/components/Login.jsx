@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
+
+
 export default function Login() {
   const navigate = useNavigate();
 
@@ -24,7 +26,7 @@ export default function Login() {
       if (res.ok) {
         localStorage.setItem("token", data.access_token);
         alert("Login Successful!");
-        navigate('/');
+        navigate('/dashboard');
       } else {
         alert(data.detail);
       }
