@@ -16,7 +16,11 @@ import mediapipe as mp
 from fastapi.middleware.cors import CORSMiddleware
 import threading
 from dotenv import load_dotenv
-
+import pyautogui
+import subprocess
+import time
+from datetime import datetime
+from backend.commands import *
 # ------------------- Config -------------------
 load_dotenv()
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")
@@ -50,12 +54,58 @@ hands = mp_hands.Hands(
 
 hands_lock = threading.Lock()
 
+ACTION_MAP = {
+    "Volume Up": volume_up,
+    "Volume Down": volume_down,
+    "Mute": mute,
+    "Unmute": unmute,
+    "Play Media": play_media,
+    "Pause Media": pause_media,
+    "Next Track": next_track,
+    "Previous Track": previous_track,
+    "Screenshot": screenshot,
+    "Lock Screen": lock_screen,
+    "Minimize All Windows": minimize_all_windows,
+    "Maximize Current Window": maximize_current_window,
+    "Minimize Current Window": minimize_current_window,
 
+    "New Tab": new_tab,
+    "Close Tab": close_tab,
+    "Reopen Closed Tab": reopen_closed_tab,
+    "Refresh Page": refresh_page,
+    "Scroll Up": scroll_up,
+    "Scroll Down": scroll_down,
+    "Zoom In": zoom_in,
+    "Zoom Out": zoom_out,
+    "Open YouTube": open_youtube,
+    "Open ChatGPT": open_chatgpt,
+
+    "Open VS Code": open_vscode,
+    "Open Terminal": open_terminal,
+    "Run Code": run_code,
+    "Git Pull": git_pull,
+    "Git Push": git_push,
+    "Create HTML Project": create_html_template,
+    "Create React Component": create_react_component,
+    "Create Node API": create_node_api_template,
+    "Create README.md": create_readme,
+
+    "Create New Folder": create_new_folder,
+    "Rename Selected File": rename_selected_file,
+    "Delete Selected File": delete_selected_file,
+    "Open Downloads": open_downloads,
+    "Open Documents": open_documents,
+    "Open Desktop": open_desktop,
+
+    "Presentation Mode": presentation_mode,
+    "Meeting Mode": meeting_mode,
+    "Study Mode": study_mode,
+    "Focus Mode": focus_mode,
+}
 # ------------------- CORS -------------------
-origins = ["http://localhost:5500", "http://127.0.0.1:5500","*"]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -228,11 +278,11 @@ def save_frame(data: Frame, user_id: str = Depends(get_user)):
 
 @app.post("/retrain_model")
 def retrain_model(user_id: str = Depends(get_user)):
+    count=gestures.count_documents({"user_id":user_id})
+    if (count==0):
+        raise HTTPException(400)
 
-    count = gestures.count_documents({"user_id": user_id})
-
-    if count < 20:
-        raise HTTPException(status_code=400, detail="Not enough samples")
+    print('Request Reached')
 
     model, classes = train_user_model(
         mongo_uri=MONGO_URI,
@@ -273,6 +323,7 @@ def extract_action_map(user_id: str = Depends(get_user)):
 
 
 # ------------------- WebSocket Prediction -------------------
+# ------------------- WebSocket Prediction -------------------
 @app.websocket("/ws/predict")
 async def websocket_predict(websocket: WebSocket):
 
@@ -294,7 +345,7 @@ async def websocket_predict(websocket: WebSocket):
             await websocket.close(code=1008)
             return
 
-        # ----------------- MODEL CACHING -----------------
+        # -------- Model Caching --------
         if user_id not in model_cache:
             model, classes = load_user_model(
                 mongo_uri=MONGO_URI,
@@ -308,13 +359,14 @@ async def websocket_predict(websocket: WebSocket):
                 await websocket.close()
                 return
 
-            # Store in memory
             model_cache[user_id] = (model, classes)
 
         model, classes = model_cache[user_id]
-        # --------------------------------------------------
+        # --------------------------------
 
-        # --- Prediction Loop ---
+        last_executed_gesture = None  # 🔥 IMPORTANT
+
+        # -------- Prediction Loop --------
         while True:
             data = await websocket.receive_json()
             frame_base64 = data.get("frame")
@@ -325,12 +377,28 @@ async def websocket_predict(websocket: WebSocket):
             landmarks = base64_to_landmarks(frame_base64)
 
             if landmarks is None:
+                last_executed_gesture = None
                 await websocket.send_json({"prediction": "no_hand"})
                 continue
 
+
             prediction = predict(model, classes, landmarks)
+
+            # Only execute if gesture changed
+            if prediction != last_executed_gesture:
+
+                action_doc = gesture_action.find_one(
+                    {"user_id": user_id, "gesture": prediction}
+                )
+                
+                if action_doc:
+                    finalaction = action_doc.get("action")
+                    ACTION_MAP[finalaction]()
+
+                last_executed_gesture = prediction
 
             await websocket.send_json({"prediction": prediction})
 
     except WebSocketDisconnect:
         print("WebSocket disconnected")
+

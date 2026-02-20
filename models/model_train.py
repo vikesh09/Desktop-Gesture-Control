@@ -34,15 +34,15 @@ class LandmarkMLP(nn.Module):
     def __init__(self, num_classes):
         super().__init__()
         self.net = nn.Sequential(
-            nn.Linear(63, 256),
-            nn.BatchNorm1d(256),
+            nn.Linear(63, 128),
+            nn.BatchNorm1d(128),
             nn.ReLU(),
             nn.Dropout(0.4),
 
-            nn.Linear(256, 128),
-            nn.BatchNorm1d(128),
-            nn.ReLU(),
-            nn.Dropout(0.3),
+            # nn.Linear(256, 128),
+            # nn.BatchNorm1d(128),
+            # nn.ReLU(),
+            # nn.Dropout(0.3),
 
             nn.Linear(128, 64),
             nn.ReLU(),
